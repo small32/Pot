@@ -185,10 +185,9 @@ pub fn install_plugin(path_list: Vec<String>) -> Result<i32, Error> {
             plugin_type.as_str(),
             "translate" | "recognize" | "tts" | "collection"
         ) {
-            return Err(Error::Error(format!(
-                "Invalid Plugin: unknown plugin type {}",
-                plugin_type
-            )));
+            return Err(Error::Error(
+                format!("Invalid Plugin: unknown plugin type {}", plugin_type).into(),
+            ));
         }
         if zip.by_name("main.js").is_err() {
             return Err(Error::Error("Invalid Plugin: miss main.js".into()));

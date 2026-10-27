@@ -4,7 +4,6 @@ use log::{info, warn};
 use std::io::Read;
 use std::thread;
 use tauri::api::notification;
-use tauri::Manager;
 use tiny_http::{Request, Response, Server};
 
 pub fn start_server() {
