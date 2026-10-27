@@ -20,9 +20,17 @@ import { info } from 'tauri-plugin-log-api';
 let blurTimeout = null;
 let resizeTimeout = null;
 let moveTimeout = null;
+let pluginListUnlisten = null;
+
+let blurUnlistenPromise = null;
+let isBlurListening = false;
 
 const listenBlur = () => {
-    return listen('tauri://blur', () => {
+    if (isBlurListening) {
+        return;
+    }
+    isBlurListening = true;
+    blurUnlistenPromise = listen('tauri://blur', () => {
         if (appWindow.label === 'translate') {
             if (blurTimeout) {
                 clearTimeout(blurTimeout);
@@ -38,12 +46,16 @@ const listenBlur = () => {
     });
 };
 
-let unlisten = listenBlur();
 // 取消 blur 监听
 const unlistenBlur = () => {
-    unlisten.then((f) => {
-        f();
-    });
+    if (!isBlurListening) {
+        return;
+    }
+    isBlurListening = false;
+    if (blurUnlistenPromise) {
+        blurUnlistenPromise.then((f) => f());
+        blurUnlistenPromise = null;
+    }
 };
 
 // 监听 focus 事件取消 blurTimeout 时间之内的关闭窗口
@@ -95,20 +107,25 @@ export default function Translate() {
         const items = reorder(translateServiceInstanceList, result.source.index, result.destination.index);
         setTranslateServiceInstanceList(items);
     };
-    // 是否自动关闭窗口
+    // 是否自动关闭窗口 / 是否置顶：统一由 pined 与配置推导，支持双向切换
     useEffect(() => {
-        if (closeOnBlur !== null && !closeOnBlur) {
-            unlistenBlur();
+        if (alwaysOnTop === null) {
+            return;
         }
-    }, [closeOnBlur]);
-    // 是否默认置顶
-    useEffect(() => {
-        if (alwaysOnTop !== null && alwaysOnTop) {
-            appWindow.setAlwaysOnTop(true);
-            unlistenBlur();
-            setPined(true);
-        }
+        setPined(alwaysOnTop);
+        appWindow.setAlwaysOnTop(alwaysOnTop);
     }, [alwaysOnTop]);
+
+    useEffect(() => {
+        if (closeOnBlur === null) {
+            return;
+        }
+        if (closeOnBlur && !pined) {
+            listenBlur();
+        } else {
+            unlistenBlur();
+        }
+    }, [closeOnBlur, pined]);
     // 保存窗口位置
     useEffect(() => {
         if (windowPosition !== null && windowPosition === 'pre_state') {
@@ -170,19 +187,26 @@ export default function Translate() {
             if (await exists(`plugins/${serviceType}`, { dir: BaseDirectory.AppConfig })) {
                 const plugins = await readDir(`plugins/${serviceType}`, { dir: BaseDirectory.AppConfig });
                 for (const plugin of plugins) {
-                    const infoStr = await readTextFile(`plugins/${serviceType}/${plugin.name}/info.json`, {
-                        dir: BaseDirectory.AppConfig,
-                    });
-                    let pluginInfo = JSON.parse(infoStr);
-                    if ('icon' in pluginInfo) {
-                        const appConfigDirPath = await appConfigDir();
-                        const iconPath = await join(
-                            appConfigDirPath,
-                            `/plugins/${serviceType}/${plugin.name}/${pluginInfo.icon}`
+                    try {
+                        const infoStr = await readTextFile(
+                            `plugins/${serviceType}/${plugin.name}/info.json`,
+                            {
+                                dir: BaseDirectory.AppConfig,
+                            }
                         );
-                        pluginInfo.icon = convertFileSrc(iconPath);
+                        let pluginInfo = JSON.parse(infoStr);
+                        if ('icon' in pluginInfo) {
+                            const appConfigDirPath = await appConfigDir();
+                            const iconPath = await join(
+                                appConfigDirPath,
+                                `/plugins/${serviceType}/${plugin.name}/${pluginInfo.icon}`
+                            );
+                            pluginInfo.icon = convertFileSrc(iconPath);
+                        }
+                        temp[serviceType][plugin.name] = pluginInfo;
+                    } catch (e) {
+                        info(`Skip invalid plugin ${serviceType}/${plugin.name}: ${e}`);
                     }
-                    temp[serviceType][plugin.name] = pluginInfo;
                 }
             }
         }
@@ -191,9 +215,15 @@ export default function Translate() {
 
     useEffect(() => {
         loadPluginList();
-        if (!unlisten) {
-            unlisten = listen('reload_plugin_list', loadPluginList);
+        if (!pluginListUnlisten) {
+            pluginListUnlisten = listen('reload_plugin_list', loadPluginList);
         }
+        return () => {
+            if (pluginListUnlisten) {
+                pluginListUnlisten.then((f) => f());
+                pluginListUnlisten = null;
+            }
+        };
     }, []);
 
     const loadServiceInstanceConfigMap = async () => {
@@ -247,16 +277,9 @@ export default function Translate() {
                         disableAnimation
                         className='my-auto bg-transparent'
                         onPress={() => {
-                            if (pined) {
-                                if (closeOnBlur) {
-                                    unlisten = listenBlur();
-                                }
-                                appWindow.setAlwaysOnTop(false);
-                            } else {
-                                unlistenBlur();
-                                appWindow.setAlwaysOnTop(true);
-                            }
-                            setPined(!pined);
+                            const next = !pined;
+                            setPined(next);
+                            appWindow.setAlwaysOnTop(next);
                         }}
                     >
                         <BsPinFill className={`text-[20px] ${pined ? 'text-primary' : 'text-default-400'}`} />

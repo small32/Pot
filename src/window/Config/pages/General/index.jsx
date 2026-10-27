@@ -20,6 +20,7 @@ import { useConfig } from '../../../../hooks/useConfig';
 import { LanguageFlag } from '../../../../utils/language';
 import { useToastStyle } from '../../../../hooks';
 import { osType } from '../../../../utils/env';
+import { normalizePortInput, parsePort } from '../../../../utils/port';
 
 let timer = null;
 
@@ -120,7 +121,15 @@ export default function General() {
                                 value={serverPort}
                                 labelPlacement='outside-left'
                                 onValueChange={(v) => {
-                                    if (parseInt(v) !== serverPort) {
+                                    const port = normalizePortInput(v, {
+                                        min: 0,
+                                        max: 65535,
+                                        emptyValue: 0,
+                                    });
+                                    if (port === null) {
+                                        return;
+                                    }
+                                    if (port !== Number(serverPort)) {
                                         if (timer) {
                                             clearTimeout(timer);
                                         }
@@ -131,15 +140,7 @@ export default function General() {
                                             });
                                         }, 1000);
                                     }
-                                    if (v === '') {
-                                        setServerPort(0);
-                                    } else if (parseInt(v) > 65535) {
-                                        setServerPort(65535);
-                                    } else if (parseInt(v) < 0) {
-                                        setServerPort(0);
-                                    } else {
-                                        setServerPort(parseInt(v));
-                                    }
+                                    setServerPort(port);
                                 }}
                                 className='max-w-[100px]'
                             />
@@ -501,7 +502,7 @@ export default function General() {
                                 isSelected={proxyEnable}
                                 onValueChange={async (v) => {
                                     if (v) {
-                                        if (proxyHost === '' || proxyPort === '') {
+                                        if (!proxyHost || parsePort(proxyPort) === null) {
                                             setProxyEnable(false);
                                             toast.error(t('config.general.proxy_error'), {
                                                 duration: 3000,
@@ -545,13 +546,15 @@ export default function General() {
                                 label={t('config.general.proxy.port')}
                                 value={proxyPort}
                                 onValueChange={(v) => {
-                                    if (parseInt(v) > 65535) {
-                                        setProxyPort(65535);
-                                    } else if (parseInt(v) < 0) {
-                                        setProxyPort('');
-                                    } else {
-                                        setProxyPort(parseInt(v));
+                                    const port = normalizePortInput(v, {
+                                        min: 0,
+                                        max: 65535,
+                                        emptyValue: '',
+                                    });
+                                    if (port === null) {
+                                        return;
                                     }
+                                    setProxyPort(port === 0 ? '' : port);
                                 }}
                                 className='ml-2'
                             />

@@ -47,13 +47,14 @@ export default function TextArea(props) {
         ) {
             setLoading(true);
             if (getServiceSouceType(currentServiceInstanceKey) === ServiceSourceType.PLUGIN) {
-                if (language in pluginList[getServiceName(currentServiceInstanceKey)].language) {
+                const plugin = pluginList[getServiceName(currentServiceInstanceKey)];
+                if (plugin && language in plugin.language) {
                     let id = nanoid();
                     recognizeId = id;
                     const pluginConfig = serviceInstanceConfigMap[currentServiceInstanceKey] ?? {};
 
                     invoke_plugin('recognize', getServiceName(currentServiceInstanceKey)).then(([func, utils]) => {
-                        func(base64, pluginList[getServiceName(currentServiceInstanceKey)].language[language], {
+                        func(base64, plugin.language[language], {
                             config: pluginConfig,
                             utils,
                         }).then(
@@ -83,6 +84,9 @@ export default function TextArea(props) {
                             }
                         );
                     });
+                } else {
+                    setError('Language not supported');
+                    setLoading(false);
                 }
             } else {
                 const instanceConfig = serviceInstanceConfigMap[currentServiceInstanceKey] ?? {};

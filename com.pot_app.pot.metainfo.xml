@@ -53,6 +53,15 @@
         </screenshot>
     </screenshots>
     <releases>
+        <release version="3.0.8" date="2026-10-27">
+            <url type="details">https://github.com/small32/Pot/releases/tag/3.0.8</url>
+            <description>
+                <p>Bugs fixed:</p>
+                <ul>
+                    <li>Fix multiple stability issues in translation, OCR, screenshot and configuration.</li>
+                </ul>
+            </description>
+        </release>
         <release version="3.0.7" date="2025-5-10">
             <url type="details">https://github.com/pot-app/pot-desktop/releases/tag/3.0.7</url>
             <description>

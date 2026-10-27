@@ -1,6 +1,7 @@
-import { Language } from './info';
 import * as jose from 'jose';
-import { info } from 'tauri-plugin-log-api';
+
+import { Language } from './info';
+import { parseSseLines } from '../../../utils/sse';
 
 export async function translate(text, from, to, options = {}) {
     const { config, setResult, detect } = options;
@@ -43,58 +44,57 @@ export async function translate(text, from, to, options = {}) {
         messages: promptList,
         stream: true,
         thinking: {
-            type: "disabled",
-        }
+            type: 'disabled',
+        },
     };
 
     let result = '';
+    // 必须使用 WebView 原生 fetch：Tauri 的 http.fetch 响应只有 data，无法读取流
+    const response = await window.fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+        throw `Http Request Error\nHttp Status: ${response.status}\n${await response.text()}`;
+    }
+    if (!response.body) {
+        throw 'Streaming response body is not available';
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
     try {
-        const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify(body),
-        });
-        if (!response.ok) {
-            throw new Error(`Http Request Error\nHttp Status: ${response.status}\n${await response.text()}`);
-        }
-
-        let buffer = '';
-        // Function to process the stream data
-        const processChatStream = async (reader, decoder) => {
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                // Convert binary data to string
-                buffer += decoder.decode(value, { stream: true });
-                
-                // Process complete events
-                const boundary = buffer.lastIndexOf('\n\n');
-                if (boundary !== -1) {
-                    const event = buffer.slice(0, boundary);
-                    buffer = buffer.slice(boundary + 2);
-                    const chunks = event.split('\n\n');
-                    
-                    for (const chunk of chunks) {
-                        const text = chunk.replace(/^data:/, '').trim();
-                        if (text === '[DONE]') {
-                            continue;
-                        }
-                        const data = JSON.parse(text);
-                        result += data.choices[0].delta.content;
-                        if (setResult) {
-                            setResult(result + '_');
-                        }
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+                break;
+            }
+            buffer += decoder.decode(value, { stream: true });
+            const { payloads, rest } = parseSseLines(buffer);
+            buffer = rest;
+            for (const line of payloads) {
+                let data;
+                try {
+                    data = JSON.parse(line);
+                } catch {
+                    // 忽略非 JSON 的保活行
+                    continue;
+                }
+                const content = data?.choices?.[0]?.delta?.content;
+                if (content) {
+                    result += content;
+                    if (setResult) {
+                        setResult(result + '_');
                     }
                 }
             }
-        };
-
-        await processChatStream(response.body.getReader(), new TextDecoder());
-    } catch (error) {
-        return Promise.reject(error);
+        }
+    } finally {
+        reader.releaseLock();
     }
-    
+
     return result;
 }
 

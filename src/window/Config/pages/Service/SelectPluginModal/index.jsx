@@ -77,7 +77,7 @@ export default function SelectPluginModal(props) {
                                                         toast.success(t('config.service.uninstall_success'), {
                                                             style: toastStyle,
                                                         });
-                                                        deleteService(x);
+                                                        deleteService(x, true);
                                                         emit('reload_plugin_list');
                                                     },
                                                     (e) => {

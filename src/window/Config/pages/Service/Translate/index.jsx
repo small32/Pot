@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import React, { useState } from 'react';
 
 import { useToastStyle } from '../../../../../hooks';
+import { removeServiceInstances } from '../../../../../utils/service_instance';
 import SelectPluginModal from '../SelectPluginModal';
 import { osType } from '../../../../../utils/env';
 import { useConfig, deleteKey } from '../../../../../hooks';
@@ -47,14 +48,16 @@ export default function Translate(props) {
         setTranslateServiceInstanceList(items);
     };
 
-    const deleteServiceInstance = (instanceKey) => {
-        if (translateServiceInstanceList.length === 1) {
+    const deleteServiceInstance = (instanceKey, force = false) => {
+        const remaining = removeServiceInstances(translateServiceInstanceList, instanceKey);
+        if (!force && remaining.length === 0) {
             toast.error(t('config.service.least'), { style: toastStyle });
             return;
-        } else {
-            setTranslateServiceInstanceList(translateServiceInstanceList.filter((x) => x !== instanceKey));
-            deleteKey(instanceKey);
         }
+        translateServiceInstanceList
+            .filter((x) => !remaining.includes(x))
+            .forEach((x) => deleteKey(x));
+        setTranslateServiceInstanceList(remaining);
     };
     const updateServiceInstanceList = (instanceKey) => {
         if (translateServiceInstanceList.includes(instanceKey)) {

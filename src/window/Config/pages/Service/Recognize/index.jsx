@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import React, { useState } from 'react';
 
 import { useToastStyle } from '../../../../../hooks';
+import { removeServiceInstances } from '../../../../../utils/service_instance';
 import SelectPluginModal from '../SelectPluginModal';
 import { osType } from '../../../../../utils/env';
 import { useConfig, deleteKey } from '../../../../../hooks';
@@ -43,14 +44,16 @@ export default function Recognize(props) {
         setRecognizeServiceInstanceList(items);
     };
 
-    const deleteServiceInstance = (instanceKey) => {
-        if (recognizeServiceInstanceList.length === 1) {
+    const deleteServiceInstance = (instanceKey, force = false) => {
+        const remaining = removeServiceInstances(recognizeServiceInstanceList, instanceKey);
+        if (!force && remaining.length === 0) {
             toast.error(t('config.service.least'), { style: toastStyle });
             return;
-        } else {
-            setRecognizeServiceInstanceList(recognizeServiceInstanceList.filter((x) => x !== instanceKey));
-            deleteKey(instanceKey);
         }
+        recognizeServiceInstanceList
+            .filter((x) => !remaining.includes(x))
+            .forEach((x) => deleteKey(x));
+        setRecognizeServiceInstanceList(remaining);
     };
     const updateServiceInstanceList = (instanceKey) => {
         if (recognizeServiceInstanceList.includes(instanceKey)) {

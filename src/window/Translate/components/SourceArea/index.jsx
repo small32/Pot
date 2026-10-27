@@ -68,6 +68,10 @@ export default function SourceArea(props) {
             setWindowType('[IMAGE_TRANSLATE]');
             const base64 = await invoke('get_base64');
             const serviceInstanceKey = recognizeServiceList[0];
+            if (!serviceInstanceKey) {
+                setSourceText('No OCR service available');
+                return;
+            }
             if (getServiceSouceType(serviceInstanceKey) === ServiceSourceType.PLUGIN) {
                 if (recognizeLanguage in pluginList['recognize'][getServiceName(serviceInstanceKey)].language) {
                     const pluginConfig = serviceInstanceConfigMap[serviceInstanceKey];
@@ -179,6 +183,9 @@ export default function SourceArea(props) {
 
     const handleSpeak = async () => {
         const instanceKey = ttsServiceList[0];
+        if (!instanceKey) {
+            throw new Error('No TTS service available');
+        }
         let detected = detectLanguage;
         if (detected === '') {
             detected = await detect(sourceText);
@@ -258,15 +265,15 @@ export default function SourceArea(props) {
         setDetectLanguage(await detect(text));
     };
 
-    let sourceTextChangeTimer = null;
+    const sourceTextChangeTimer = useRef(null);
     const changeSourceText = async (text) => {
         setDetectLanguage('');
         await setSourceText(text);
         if (dynamicTranslate) {
-            if (sourceTextChangeTimer) {
-                clearTimeout(sourceTextChangeTimer);
+            if (sourceTextChangeTimer.current) {
+                clearTimeout(sourceTextChangeTimer.current);
             }
-            sourceTextChangeTimer = setTimeout(() => {
+            sourceTextChangeTimer.current = setTimeout(() => {
                 detect_language(text).then(() => {
                     syncSourceText();
                 });
@@ -345,22 +352,29 @@ export default function SourceArea(props) {
         return str2;
     }
     useEffect(() => {
-        textAreaRef.current.addEventListener("keydown", async (event) => {
+        const textArea = textAreaRef.current;
+        if (!textArea) {
+            return;
+        }
+        const handler = async (event) => {
             if (event.altKey && event.shiftKey && event.code === 'KeyU') {
-                const originText = textAreaRef.current.value;
-                const selectionStart = textAreaRef.current.selectionStart;
-                const selectionEnd = textAreaRef.current.selectionEnd;
+                const originText = textArea.value;
+                const selectionStart = textArea.selectionStart;
+                const selectionEnd = textArea.selectionEnd;
                 const selectionText = originText.substring(selectionStart, selectionEnd);
 
                 const convertedText = transformVarName(selectionText);
-                const targetText = originText.substring(0, selectionStart) + convertedText + originText.substring(selectionEnd);
+                const targetText =
+                    originText.substring(0, selectionStart) + convertedText + originText.substring(selectionEnd);
 
                 await changeSourceText(targetText);
-                textAreaRef.current.selectionStart = selectionStart;
-                textAreaRef.current.selectionEnd = selectionStart + convertedText.length;
+                textArea.selectionStart = selectionStart;
+                textArea.selectionEnd = selectionStart + convertedText.length;
             }
-        });
-    }, [textAreaRef]);
+        };
+        textArea.addEventListener('keydown', handler);
+        return () => textArea.removeEventListener('keydown', handler);
+    }, [dynamicTranslate]);
 
 
     return (

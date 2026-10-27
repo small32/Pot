@@ -17,36 +17,54 @@ pub fn get_text(state: tauri::State<StringWrapper>) -> String {
 pub fn reload_store() {
     let state = APP.get().unwrap().state::<StoreWrapper>();
     let mut store = state.0.lock().unwrap();
-    store.load().unwrap();
+    if let Err(e) = store.load() {
+        error!("Reload store failed: {:?}", e);
+    }
 }
 
 #[tauri::command]
-pub fn cut_image(left: u32, top: u32, width: u32, height: u32, app_handle: tauri::AppHandle) {
+pub fn cut_image(
+    left: u32,
+    top: u32,
+    width: u32,
+    height: u32,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
     use dirs::cache_dir;
-    use image::GenericImage;
+    use image::{GenericImage, GenericImageView};
     info!("Cut image: {}x{}+{}+{}", width, height, left, top);
     let mut app_cache_dir_path = cache_dir().expect("Get Cache Dir Failed");
     app_cache_dir_path.push(&app_handle.config().tauri.bundle.identifier);
     app_cache_dir_path.push("pot_screenshot.png");
     if !app_cache_dir_path.exists() {
-        return;
+        return Err("Screenshot file not found".to_string());
     }
     let mut img = match image::open(&app_cache_dir_path) {
         Ok(v) => v,
         Err(e) => {
             error!("{:?}", e.to_string());
-            return;
+            return Err(e.to_string());
         }
     };
+    let (img_width, img_height) = img.dimensions();
+    let in_bounds = width > 0
+        && height > 0
+        && left.checked_add(width).map_or(false, |x| x <= img_width)
+        && top.checked_add(height).map_or(false, |y| y <= img_height);
+    if !in_bounds {
+        error!(
+            "Invalid cut area: {}x{}+{}+{} (image {}x{})",
+            width, height, left, top, img_width, img_height
+        );
+        return Err("Invalid cut area".to_string());
+    }
     let img2 = img.sub_image(left, top, width, height);
     app_cache_dir_path.pop();
     app_cache_dir_path.push("pot_screenshot_cut.png");
-    match img2.to_image().save(&app_cache_dir_path) {
-        Ok(_) => {}
-        Err(e) => {
-            error!("{:?}", e.to_string());
-        }
-    }
+    img2.to_image()
+        .save(&app_cache_dir_path)
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -61,7 +79,13 @@ pub fn get_base64(app_handle: tauri::AppHandle) -> String {
     if !app_cache_dir_path.exists() {
         return "".to_string();
     }
-    let mut file = File::open(app_cache_dir_path).unwrap();
+    let mut file = match File::open(app_cache_dir_path) {
+        Ok(v) => v,
+        Err(e) => {
+            error!("{:?}", e.to_string());
+            return "".to_string();
+        }
+    };
     let mut vec = Vec::new();
     match file.read_to_end(&mut vec) {
         Ok(_) => {}
@@ -97,18 +121,17 @@ pub fn copy_img(app_handle: tauri::AppHandle, width: usize, height: usize) -> Re
 
 #[tauri::command]
 pub fn set_proxy() -> Result<bool, ()> {
-    let host = match get("proxy_host") {
-        Some(v) => v.as_str().unwrap().to_string(),
-        None => return Err(()),
+    let host = match get("proxy_host").and_then(|v| v.as_str().map(str::to_string)) {
+        Some(v) if !v.is_empty() => v,
+        _ => return Err(()),
     };
-    let port = match get("proxy_port") {
-        Some(v) => v.as_i64().unwrap(),
-        None => return Err(()),
+    let port = match get("proxy_port").and_then(|v| v.as_i64()) {
+        Some(v) if (1..=65535).contains(&v) => v,
+        _ => return Err(()),
     };
-    let no_proxy = match get("no_proxy") {
-        Some(v) => v.as_str().unwrap().to_string(),
-        None => return Err(()),
-    };
+    let no_proxy = get("no_proxy")
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_default();
     let proxy = format!("http://{}:{}", host, port);
 
     std::env::set_var("http_proxy", &proxy);
@@ -157,6 +180,15 @@ pub fn install_plugin(path_list: Vec<String>) -> Result<i32, Error> {
                 .to_string();
         } else {
             return Err(Error::Error("Invalid Plugin: miss info.json".into()));
+        }
+        if !matches!(
+            plugin_type.as_str(),
+            "translate" | "recognize" | "tts" | "collection"
+        ) {
+            return Err(Error::Error(format!(
+                "Invalid Plugin: unknown plugin type {}",
+                plugin_type
+            )));
         }
         if zip.by_name("main.js").is_err() {
             return Err(Error::Error("Invalid Plugin: miss main.js".into()));

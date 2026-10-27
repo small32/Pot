@@ -1,3 +1,20 @@
+## 3.0.8 (2026-10-27)
+
+### Bugs fixed:
+
+-   fix language swap ReferenceError in translate window
+-   fix ChatGLM streaming translation
+-   fix invalid proxy port causing startup panic
+-   validate plugin type when installing plugins
+-   fix hotkey being cleared when focusing the input
+-   fix backup failure when Aliyun Drive is not logged in
+-   keep the local HTTP server alive on invalid request body
+-   skip OCR window when macOS screenshot is cancelled
+-   fix dynamic translate debounce, duplicate auto copy and history database races
+-   refresh plugin list in opened translate/recognize windows
+-   fix OCR service names, instance keys and plugin uninstall cleanup
+-   fix screenshot cutting bounds and failure handling
+
 ## 3.0.7 (2025-5-10)
 
 ### New feature:

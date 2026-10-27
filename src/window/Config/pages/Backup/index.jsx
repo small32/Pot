@@ -55,35 +55,32 @@ export default function Backup() {
         }-${time.getDate()}-${time.getHours()}-${time.getMinutes()}-${time.getSeconds()}`;
 
         let result;
-        switch (backupType) {
-            case 'webdav':
-                result = webdav.backup(davUrl, davUserName, davPassword, fileName + '.zip');
-                break;
-            case 'local':
-                result = local.backup(fileName);
-                break;
-            case 'aliyun':
-                if (aliyunAccessToken === '') {
-                    toast.error(t('config.backup.aliyun_login_first'), { style: toastStyle });
-                    setUploading(false);
-                } else {
+        try {
+            switch (backupType) {
+                case 'webdav':
+                    result = webdav.backup(davUrl, davUserName, davPassword, fileName + '.zip');
+                    break;
+                case 'local':
+                    result = local.backup(fileName);
+                    break;
+                case 'aliyun':
+                    if (aliyunAccessToken === '') {
+                        toast.error(t('config.backup.aliyun_login_first'), { style: toastStyle });
+                        return;
+                    }
                     result = aliyun.backup(aliyunAccessToken, fileName + '.zip');
-                }
-                break;
-            default:
-                warn('Unknown backup type');
-                return;
-        }
-        result.then(
-            () => {
-                toast.success(t('config.backup.backup_success'), { style: toastStyle });
-                setUploading(false);
-            },
-            (e) => {
-                toast.error(e.toString(), { style: toastStyle });
-                setUploading(false);
+                    break;
+                default:
+                    warn('Unknown backup type');
+                    return;
             }
-        );
+            await result;
+            toast.success(t('config.backup.backup_success'), { style: toastStyle });
+        } catch (e) {
+            toast.error(e.toString(), { style: toastStyle });
+        } finally {
+            setUploading(false);
+        }
     };
 
     const onBackupListOpen = () => {

@@ -99,23 +99,25 @@ fn main() {
                     .show()
                     .unwrap(),
             }
-            match get("proxy_enable") {
-                Some(v) => {
-                    if v.as_bool().unwrap() && get("proxy_host").map_or(false, |host| !host.as_str().unwrap().is_empty()) {
-                        let _ = set_proxy();
-                    }
+            if get("proxy_enable").and_then(|v| v.as_bool()).unwrap_or(false)
+                && get("proxy_host")
+                    .and_then(|v| v.as_str().map(|host| !host.is_empty()))
+                    .unwrap_or(false)
+            {
+                if set_proxy().is_err() {
+                    log::warn!("Invalid proxy config, proxy not enabled");
                 }
-                None => {}
             }
             // Check Update
             check_update(app.handle());
-            if let Some(engine) = get("translate_detect_engine") {
-                if engine.as_str().unwrap() == "local" {
-                    init_lang_detect();
-                }
+            if get("translate_detect_engine")
+                .and_then(|v| v.as_str().map(|engine| engine == "local"))
+                .unwrap_or(false)
+            {
+                init_lang_detect();
             }
-            let clipboard_monitor = match get("clipboard_monitor") {
-                Some(v) => v.as_bool().unwrap(),
+            let clipboard_monitor = match get("clipboard_monitor").and_then(|v| v.as_bool()) {
+                Some(v) => v,
                 None => {
                     set("clipboard_monitor", false);
                     false

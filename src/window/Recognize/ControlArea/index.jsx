@@ -44,10 +44,13 @@ export default function ControlArea(props) {
         if (serviceInstanceList) {
             setCurrentServiceInstanceKey(serviceInstanceList[0]);
         }
+    }, [serviceInstanceList]);
+
+    useEffect(() => {
         if (recognizeLanguage) {
             setLanguage(recognizeLanguage);
         }
-    }, [serviceInstanceList, recognizeLanguage]);
+    }, [recognizeLanguage]);
 
     return (
         <div className='flex justify-between px-[12px] h-full'>
@@ -78,7 +81,7 @@ export default function ControlArea(props) {
                                       () => pluginList[getServiceName(currentServiceInstanceKey)].display
                                   )
                                 : getInstanceName(currentServiceInstanceKey, () =>
-                                      t(`services.recognize.${currentServiceInstanceKey}.title`)
+                                      t(`services.recognize.${getServiceName(currentServiceInstanceKey)}.title`)
                                   )}
                         </Button>
                     </DropdownTrigger>
@@ -112,7 +115,7 @@ export default function ControlArea(props) {
                                               () => pluginList[getServiceName(instanceKey)].display
                                           )
                                         : getInstanceName(instanceKey, () =>
-                                              t(`services.recognize.${instanceKey}.title`)
+                                              t(`services.recognize.${getServiceName(instanceKey)}.title`)
                                           )}
                                 </DropdownItem>
                             );

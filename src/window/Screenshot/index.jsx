@@ -21,13 +21,18 @@ export default function Screenshot() {
     useEffect(() => {
         currentMonitor().then((monitor) => {
             const position = monitor.position;
-            invoke('screenshot', { x: position.x, y: position.y }).then(() => {
-                appCacheDir().then((appCacheDirPath) => {
-                    join(appCacheDirPath, 'pot_screenshot.png').then((filePath) => {
-                        setImgurl(convertFileSrc(filePath));
+            invoke('screenshot', { x: position.x, y: position.y })
+                .then(() => {
+                    appCacheDir().then((appCacheDirPath) => {
+                        join(appCacheDirPath, 'pot_screenshot.png').then((filePath) => {
+                            setImgurl(convertFileSrc(filePath));
+                        });
                     });
+                })
+                .catch(async (e) => {
+                    warn('Failed to take screenshot: ' + e);
+                    await appWindow.close();
                 });
-            });
         });
     }, []);
 
@@ -38,6 +43,13 @@ export default function Screenshot() {
                 className='fixed top-0 left-0 w-full select-none'
                 src={imgurl}
                 draggable={false}
+                onError={async () => {
+                    if (imgurl === '') {
+                        return;
+                    }
+                    warn('Failed to load screenshot image');
+                    await appWindow.close();
+                }}
                 onLoad={() => {
                     if (imgurl !== '' && imgRef.current.complete) {
                         void appWindow.show();
@@ -89,8 +101,12 @@ export default function Screenshot() {
                         warn('Screenshot area is too small');
                         await appWindow.close();
                     } else {
-                        await invoke('cut_image', { left, top, width, height });
-                        await emit('success');
+                        try {
+                            await invoke('cut_image', { left, top, width, height });
+                            await emit('success');
+                        } catch (err) {
+                            warn('Failed to cut image: ' + err);
+                        }
                         await appWindow.close();
                     }
                 }}

@@ -19,9 +19,16 @@ import TextArea from './TextArea';
 export const pluginListAtom = atom();
 
 let blurTimeout = null;
+let pluginListUnlisten = null;
+let blurUnlistenPromise = null;
+let isBlurListening = false;
 
 const listenBlur = () => {
-    return listen('tauri://blur', () => {
+    if (isBlurListening) {
+        return;
+    }
+    isBlurListening = true;
+    blurUnlistenPromise = listen('tauri://blur', () => {
         if (appWindow.label === 'recognize') {
             if (blurTimeout) {
                 clearTimeout(blurTimeout);
@@ -35,12 +42,16 @@ const listenBlur = () => {
     });
 };
 
-let unlisten = listenBlur();
 // 取消 blur 监听
 const unlistenBlur = () => {
-    unlisten.then((f) => {
-        f();
-    });
+    if (!isBlurListening) {
+        return;
+    }
+    isBlurListening = false;
+    if (blurUnlistenPromise) {
+        blurUnlistenPromise.then((f) => f());
+        blurUnlistenPromise = null;
+    }
 };
 
 // 监听 focus 事件取消 blurTimeout 时间之内的关闭窗口
@@ -62,19 +73,23 @@ export default function Recognize() {
         if (await exists(`plugins/recognize`, { dir: BaseDirectory.AppConfig })) {
             const plugins = await readDir(`plugins/recognize`, { dir: BaseDirectory.AppConfig });
             for (const plugin of plugins) {
-                const infoStr = await readTextFile(`plugins/recognize/${plugin.name}/info.json`, {
-                    dir: BaseDirectory.AppConfig,
-                });
-                let pluginInfo = JSON.parse(infoStr);
-                if ('icon' in pluginInfo) {
-                    const appConfigDirPath = await appConfigDir();
-                    const iconPath = await join(
-                        appConfigDirPath,
-                        `/plugins/recognize/${plugin.name}/${pluginInfo.icon}`
-                    );
-                    pluginInfo.icon = convertFileSrc(iconPath);
+                try {
+                    const infoStr = await readTextFile(`plugins/recognize/${plugin.name}/info.json`, {
+                        dir: BaseDirectory.AppConfig,
+                    });
+                    let pluginInfo = JSON.parse(infoStr);
+                    if ('icon' in pluginInfo) {
+                        const appConfigDirPath = await appConfigDir();
+                        const iconPath = await join(
+                            appConfigDirPath,
+                            `/plugins/recognize/${plugin.name}/${pluginInfo.icon}`
+                        );
+                        pluginInfo.icon = convertFileSrc(iconPath);
+                    }
+                    temp[plugin.name] = pluginInfo;
+                } catch (e) {
+                    console.error(`Skip invalid recognize plugin ${plugin.name}: ${e}`);
                 }
-                temp[plugin.name] = pluginInfo;
             }
         }
         setPluginList({ ...temp });
@@ -94,13 +109,27 @@ export default function Recognize() {
 
     useEffect(() => {
         loadPluginList();
+        if (!pluginListUnlisten) {
+            pluginListUnlisten = listen('reload_plugin_list', loadPluginList);
+        }
+        return () => {
+            if (pluginListUnlisten) {
+                pluginListUnlisten.then((f) => f());
+                pluginListUnlisten = null;
+            }
+        };
     }, []);
-    // 是否自动关闭窗口
+    // 是否自动关闭窗口：支持双向切换
     useEffect(() => {
-        if (closeOnBlur !== null && !closeOnBlur) {
+        if (closeOnBlur === null) {
+            return;
+        }
+        if (closeOnBlur && !pined) {
+            listenBlur();
+        } else {
             unlistenBlur();
         }
-    }, [closeOnBlur]);
+    }, [closeOnBlur, pined]);
 
     return (
         pluginList &&
@@ -122,16 +151,9 @@ export default function Recognize() {
                         disableAnimation
                         className='my-auto mx-[5px] bg-transparent'
                         onPress={() => {
-                            if (pined) {
-                                if (closeOnBlur) {
-                                    unlisten = listenBlur();
-                                }
-                                appWindow.setAlwaysOnTop(false);
-                            } else {
-                                unlistenBlur();
-                                appWindow.setAlwaysOnTop(true);
-                            }
-                            setPined(!pined);
+                            const next = !pined;
+                            setPined(next);
+                            appWindow.setAlwaysOnTop(next);
                         }}
                     >
                         <BsPinFill className={`text-[20px] ${pined ? 'text-primary' : 'text-default-400'}`} />

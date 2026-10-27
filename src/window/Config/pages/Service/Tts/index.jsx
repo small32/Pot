@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import React, { useState } from 'react';
 
 import { useToastStyle } from '../../../../../hooks';
+import { removeServiceInstances } from '../../../../../utils/service_instance';
 import SelectPluginModal from '../SelectPluginModal';
 import { osType } from '../../../../../utils/env';
 import { useConfig, deleteKey } from '../../../../../hooks';
@@ -40,14 +41,14 @@ export default function Tts(props) {
         setTtsServiceInstanceList(items);
     };
 
-    const deleteServiceInstance = (instanceKey) => {
-        if (ttsServiceInstanceList.length === 1) {
+    const deleteServiceInstance = (instanceKey, force = false) => {
+        const remaining = removeServiceInstances(ttsServiceInstanceList, instanceKey);
+        if (!force && remaining.length === 0) {
             toast.error(t('config.service.least'), { style: toastStyle });
             return;
-        } else {
-            setTtsServiceInstanceList(ttsServiceInstanceList.filter((x) => x !== instanceKey));
-            deleteKey(instanceKey);
         }
+        ttsServiceInstanceList.filter((x) => !remaining.includes(x)).forEach((x) => deleteKey(x));
+        setTtsServiceInstanceList(remaining);
     };
     const updateServiceInstanceList = (instanceKey) => {
         if (ttsServiceInstanceList.includes(instanceKey)) {

@@ -8,7 +8,6 @@ import React, { useEffect, useState } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import { Pagination } from '@nextui-org/react';
 import { useTranslation } from 'react-i18next';
-import Database from 'tauri-plugin-sql-api';
 
 import * as builtinCollectionServices from '../../../../services/collection';
 import { invoke_plugin } from '../../../../utils/invoke_plugin';
@@ -16,6 +15,7 @@ import * as builtinServices from '../../../../services/translate';
 import { useConfig, useToastStyle } from '../../../../hooks';
 import { LanguageFlag } from '../../../../utils/language';
 import { store } from '../../../../utils/store';
+import { loadHistoryDb } from '../../../../utils/history';
 import { osType } from '../../../../utils/env';
 import {
     ServiceSourceType,
@@ -45,39 +45,62 @@ export default function History() {
     }, [total, page]);
 
     const init = async () => {
-        const db = await Database.load('sqlite:history.db');
-        const result = await db.select('SELECT COUNT(*) FROM history');
-        if (result[0] && result[0]['COUNT(*)']) {
-            setTotal(result[0]['COUNT(*)']);
+        try {
+            const db = await loadHistoryDb();
+            const result = await db.select('SELECT COUNT(*) FROM history');
+            if (result[0] && result[0]['COUNT(*)']) {
+                setTotal(result[0]['COUNT(*)']);
+            }
+        } catch (e) {
+            toast.error(e.toString(), { style: toastStyle });
         }
     };
     const getData = async () => {
-        const db = await Database.load('sqlite:history.db');
-        let result = await db.select('SELECT * FROM history ORDER BY id DESC LIMIT 20 OFFSET $1', [20 * (page - 1)]);
-        setItems(result);
+        try {
+            const db = await loadHistoryDb();
+            let result = await db.select('SELECT * FROM history ORDER BY id DESC LIMIT 20 OFFSET $1', [
+                20 * (page - 1),
+            ]);
+            setItems(result);
+        } catch (e) {
+            setItems([]);
+        }
     };
 
     const getSelectedData = async (id) => {
-        const db = await Database.load('sqlite:history.db');
-        let result = await db.select('SELECT * FROM history WHERE id=$1', [id]);
-        setSelectItem(result[0]);
+        try {
+            const db = await loadHistoryDb();
+            let result = await db.select('SELECT * FROM history WHERE id=$1', [id]);
+            setSelectItem(result[0]);
+        } catch (e) {
+            toast.error(e.toString(), { style: toastStyle });
+        }
     };
     const clearData = async () => {
-        const db = await Database.load('sqlite:history.db');
-        await db.execute('DROP TABLE history');
-        await db.execute('VACUUM');
+        try {
+            const db = await loadHistoryDb();
+            await db.execute('DELETE FROM history');
+            await db.execute('VACUUM');
+        } catch (e) {
+            toast.error(e.toString(), { style: toastStyle });
+            return;
+        }
         setItems([]);
         setTotal(0);
         setPage(1);
     };
     const updateData = async () => {
-        const db = await Database.load('sqlite:history.db');
-        await db.execute('UPDATE history SET text=$1, result=$2 WHERE id=$3', [
-            selectedItem.text,
-            selectedItem.result,
-            selectedItem.id,
-        ]);
-        await getData();
+        try {
+            const db = await loadHistoryDb();
+            await db.execute('UPDATE history SET text=$1, result=$2 WHERE id=$3', [
+                selectedItem.text,
+                selectedItem.result,
+                selectedItem.id,
+            ]);
+            await getData();
+        } catch (e) {
+            toast.error(e.toString(), { style: toastStyle });
+        }
     };
 
     const formatDate = (date) => {

@@ -1,6 +1,6 @@
 use crate::{error::Error, APP};
 use dirs::config_dir;
-use log::{info, warn};
+use log::{error, info, warn};
 use serde_json::{json, Value};
 use std::sync::Mutex;
 use tauri::{Manager, Wry};
@@ -177,8 +177,13 @@ pub fn get(key: &str) -> Option<Value> {
 pub fn set<T: serde::ser::Serialize>(key: &str, value: T) {
     let state = APP.get().unwrap().state::<StoreWrapper>();
     let mut store = state.0.lock().unwrap();
-    store.insert(key.to_string(), json!(value)).unwrap();
-    store.save().unwrap();
+    if let Err(e) = store.insert(key.to_string(), json!(value)) {
+        error!("Set config {} failed: {:?}", key, e);
+        return;
+    }
+    if let Err(e) = store.save() {
+        error!("Save config failed: {:?}", e);
+    }
 }
 
 pub fn is_first_run() -> bool {

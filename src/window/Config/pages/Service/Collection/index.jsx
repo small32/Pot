@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import SelectPluginModal from '../SelectPluginModal';
 import { osType } from '../../../../../utils/env';
 import { useConfig, deleteKey } from '../../../../../hooks';
+import { removeServiceInstances } from '../../../../../utils/service_instance';
 import ServiceItem from './ServiceItem';
 import SelectModal from './SelectModal';
 import ConfigModal from './ConfigModal';
@@ -37,9 +38,12 @@ export default function Collection(props) {
         setCollectionServiceInstanceList(items);
     };
 
-    const deleteServiceInstance = (instanceKey) => {
-        setCollectionServiceInstanceList(collectionServiceInstanceList.filter((x) => x !== instanceKey));
-        deleteKey(instanceKey);
+    const deleteServiceInstance = (instanceKey, force = false) => {
+        const remaining = removeServiceInstances(collectionServiceInstanceList, instanceKey);
+        collectionServiceInstanceList
+            .filter((x) => !remaining.includes(x))
+            .forEach((x) => deleteKey(x));
+        setCollectionServiceInstanceList(remaining);
     };
     const updateServiceInstanceList = (instanceKey) => {
         if (collectionServiceInstanceList.includes(instanceKey)) {

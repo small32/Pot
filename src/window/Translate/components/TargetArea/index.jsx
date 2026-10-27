@@ -23,7 +23,6 @@ import { semanticColors } from '@nextui-org/theme';
 import toast, { Toaster } from 'react-hot-toast';
 import { MdContentCopy } from 'react-icons/md';
 import { useTranslation } from 'react-i18next';
-import Database from 'tauri-plugin-sql-api';
 import { GiCycle } from 'react-icons/gi';
 import { useTheme } from 'next-themes';
 import { useAtomValue } from 'jotai';
@@ -36,6 +35,7 @@ import { sourceLanguageAtom, targetLanguageAtom } from '../LanguageArea';
 import { useConfig, useToastStyle, useVoice } from '../../../../hooks';
 import { sourceTextAtom, detectLanguageAtom } from '../SourceArea';
 import { invoke_plugin } from '../../../../utils/invoke_plugin';
+import { loadHistoryDb } from '../../../../utils/history';
 import * as builtinServices from '../../../../services/translate';
 import * as builtinTtsServices from '../../../../services/tts';
 
@@ -74,6 +74,11 @@ export default function TargetArea(props) {
     const sourceText = useAtomValue(sourceTextAtom);
     const sourceLanguage = useAtomValue(sourceLanguageAtom);
     const targetLanguage = useAtomValue(targetLanguageAtom);
+    const firstEnabledIndex = translateServiceInstanceList.findIndex((instanceKey) => {
+        const instanceConfig = serviceInstanceConfigMap[instanceKey] ?? {};
+        return instanceConfig['enable'] ?? true;
+    });
+    const isPrimary = index === firstEnabledIndex;
     const [autoCopy] = useConfig('translate_auto_copy', 'disable');
     const [hideWindow] = useConfig('translate_hide_window', false);
     const [clipboardMonitor] = useConfig('clipboard_monitor', false);
@@ -104,7 +109,7 @@ export default function TargetArea(props) {
             hideWindow !== null &&
             clipboardMonitor !== null
         ) {
-            if (autoCopy === 'source' && !clipboardMonitor) {
+            if (autoCopy === 'source' && !clipboardMonitor && isPrimary) {
                 writeText(sourceText).then(() => {
                     if (hideWindow) {
                         sendNotification({ title: t('common.write_clipboard'), body: sourceText });
@@ -125,26 +130,16 @@ export default function TargetArea(props) {
 
     // todo: history panel use service instance key
     const addToHistory = async (text, source, target, serviceInstanceKey, result) => {
-        const db = await Database.load('sqlite:history.db');
-
-        await db
-            .execute(
+        try {
+            const db = await loadHistoryDb();
+            const historyResult = typeof result === 'string' ? result : JSON.stringify(result);
+            await db.execute(
                 'INSERT into history (text, source, target, service, result, timestamp) VALUES ($1, $2, $3, $4, $5, $6)',
-                [text, source, target, serviceInstanceKey, result, Date.now()]
-            )
-            .then(
-                (v) => {
-                    db.close();
-                },
-                (e) => {
-                    db.execute(
-                        'CREATE TABLE history(id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT NOT NULL,source TEXT NOT NULL,target TEXT NOT NULL,service TEXT NOT NULL, result TEXT NOT NULL,timestamp INTEGER NOT NULL)'
-                    ).then(() => {
-                        db.close();
-                        addToHistory(text, source, target, serviceInstanceKey, result);
-                    });
-                }
+                [text, source, target, serviceInstanceKey, historyResult, Date.now()]
             );
+        } catch (e) {
+            logError('Failed to save history: ' + e);
+        }
     };
 
     function invokeOnce(fn) {
@@ -206,7 +201,7 @@ export default function TargetArea(props) {
                                 typeof v === 'string' ? v.trim() : v
                             );
                         }
-                        if (index === 0 && !clipboardMonitor) {
+                        if (isPrimary && !clipboardMonitor) {
                             switch (autoCopy) {
                                 case 'target':
                                     writeText(v).then(() => {
@@ -279,7 +274,7 @@ export default function TargetArea(props) {
                                     typeof v === 'string' ? v.trim() : v
                                 );
                             }
-                            if (index === 0 && !clipboardMonitor) {
+                            if (isPrimary && !clipboardMonitor) {
                                 switch (autoCopy) {
                                     case 'target':
                                         writeText(v).then(() => {
@@ -340,6 +335,9 @@ export default function TargetArea(props) {
     // handle tts speak
     const handleSpeak = async () => {
         const instanceKey = ttsServiceList[0];
+        if (!instanceKey) {
+            throw new Error('No TTS service available');
+        }
         if (getServiceSouceType(instanceKey) === ServiceSourceType.PLUGIN) {
             const pluginConfig = serviceInstanceConfigMap[instanceKey];
             if (!(targetLanguage in ttsPluginInfo.language)) {
