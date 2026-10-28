@@ -1,0 +1,60 @@
+name: Release Windows
+
+on:
+    workflow_dispatch:
+
+permissions:
+    contents: write
+
+jobs:
+    build:
+        runs-on: windows-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Setup Nodejs
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v4
+              with:
+                  version: 9
+
+            - name: Install Rust Stable
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: Install Dependencies
+              run: pnpm install
+
+            # 仓库未提供 updater 签名私钥，构建时关闭 updater 产物签名
+            - name: Prepare build config
+              shell: pwsh
+              run: |
+                  $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+                  (Get-Content src-tauri/Cargo.toml -Raw).Replace('version = "0.0.0"', "version = `"$version`"") | Set-Content src-tauri/Cargo.toml
+
+                  $config = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+                  $config.tauri.updater.active = $false
+                  $config | ConvertTo-Json -Depth 100 | Set-Content src-tauri/tauri.conf.json
+
+            - name: Build and Package
+              run: pnpm tauri build -b nsis
+
+            - name: Upload Release
+              shell: pwsh
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+                  gh release view $version *> $null
+                  if ($LASTEXITCODE -ne 0) {
+                      gh release create $version --title "Pot $version" --notes "Pot $version"
+                  }
+                  $installers = Get-ChildItem "src-tauri/target/release/bundle/nsis/*-setup.exe" | ForEach-Object { $_.FullName }
+                  if (-not $installers) {
+                      throw "No installer produced"
+                  }
+                  gh release upload $version $installers --clobber
