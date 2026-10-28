@@ -16,7 +16,7 @@ jobs:
             - name: Setup Nodejs
               uses: actions/setup-node@v4
               with:
-                  node-version: 20
+                  node-version: 22
 
             - name: Setup pnpm
               uses: pnpm/action-setup@v4
@@ -29,7 +29,7 @@ jobs:
             - name: Install Dependencies
               run: pnpm install
 
-            # 仓库未提供 updater 签名私钥，构建时关闭 updater 产物签名
+            # 仓库没有 updater 签名私钥：清空公钥以跳过签名，同时保留 updater feature 以免 Rust 代码编译失败
             - name: Prepare build config
               shell: pwsh
               run: |
@@ -37,7 +37,7 @@ jobs:
                   (Get-Content src-tauri/Cargo.toml -Raw).Replace('version = "0.0.0"', "version = `"$version`"") | Set-Content src-tauri/Cargo.toml
 
                   $config = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
-                  $config.tauri.updater.active = $false
+                  $config.tauri.updater.pubkey = ''
                   $config | ConvertTo-Json -Depth 100 | Set-Content src-tauri/tauri.conf.json
 
             - name: Build and Package
